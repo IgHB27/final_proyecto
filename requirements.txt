@@ -1,0 +1,14 @@
+streamlit
+pandas
+plotly
+numpy
+folium
+ipyleaflet
+ipython
+ipywidgets
+matplotlib
+seaborn
+jupyter
+notebook
+pdfplumber
+pyproj
