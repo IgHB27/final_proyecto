@@ -7,7 +7,7 @@ import os
 from utm_grid import generar_trazas_cuadricula_utm
 
 # ==============================================================================
-# 1. CONFIGURACIÓN DE LA INTERFAZ mod mod
+# 1. CONFIGURACIÓN DE LA INTERFAZ
 # ==============================================================================
 st.set_page_config(
     page_title="Sistema de Gestión de Crisis - Biobío",
@@ -163,35 +163,48 @@ def inicializar_sistema():
     df_comunas_biobio["longitud_decimal"] = pd.to_numeric(df_comunas_biobio["longitud_decimal"], errors="coerce")
 
     def limpiar_poblacion(valor):
-        """Convierte población chilena a entero sin inflar cifras.
+        """Convierte población a entero sin inflar cifras.
 
-        Ejemplos:
+        Casos cubiertos:
+        - 223574 o 223574.0 -> 223574
         - '223.574' -> 223574
-        - '202331' -> 202331
-        - '91,773' -> 91773
-        - 223574 -> 223574
+        - '223,574' -> 223574
+        - '223574' -> 223574
         """
         if pd.isna(valor):
             return 0
 
+        # Si pandas ya lo leyó como número, NO se deben borrar puntos.
+        # Ejemplo: 223574.0 debe quedar 223574, no 2235740.
+        if isinstance(valor, (int, float, np.integer, np.floating)):
+            return int(round(float(valor)))
+
         texto = str(valor).strip().replace(" ", "")
 
-        # Formato chileno/español: 1.234,0
+        # Formato chileno/español con miles y decimal: 1.234,0
         if "." in texto and "," in texto:
             texto = texto.replace(".", "").replace(",", ".")
 
         # Punto como separador de miles: 223.574
         elif "." in texto:
             partes = texto.split(".")
-            if len(partes[-1]) == 3:
+
+            # Si termina en .0 o .00, es decimal de pandas/exportación, no miles.
+            if partes[-1] in ["0", "00"]:
+                texto = partes[0]
+            # Si termina en tres dígitos, se interpreta como separador de miles.
+            elif len(partes[-1]) == 3:
                 texto = texto.replace(".", "")
             else:
                 texto = texto.replace(".", "")
 
-        # Coma como separador de miles: 223,574
+        # Coma como separador de miles o decimal.
         elif "," in texto:
             partes = texto.split(",")
-            if len(partes[-1]) == 3:
+
+            if partes[-1] in ["0", "00"]:
+                texto = partes[0]
+            elif len(partes[-1]) == 3:
                 texto = texto.replace(",", "")
             else:
                 texto = texto.replace(",", ".")
@@ -200,10 +213,6 @@ def inicializar_sistema():
             numero = int(round(float(texto)))
         except Exception:
             return 0
-
-        # Control de seguridad: una comuna no debería quedar con millones por error de limpieza.
-        while numero > 1_000_000:
-            numero = int(numero / 1000)
 
         return numero
 
@@ -375,14 +384,25 @@ with tab_mapa:
         .drop_duplicates(subset=['comuna'])
         .copy()
     )
-    poblacion_afectada = comunas_afectadas['poblacion_2017'].sum()
-    vividendas_afectadas = poblacion_afectada / 3.2
+
+    # Métrica superior: población de la(s) comuna(s) seleccionada(s) como foco inicial.
+    # Esto evita confundir la suma de comunas afectadas con la población del foco.
+    poblacion_foco = df_comunas[
+        df_comunas["comuna"].isin(comunas_origen)
+    ].drop_duplicates(subset=["comuna"])["poblacion_2017"].sum()
+
+    viviendas_foco = poblacion_foco / 3.2
 
     m1, m2, m3, m4 = st.columns(4)
     with m1: st.metric("Índice de Gravedad (IP)", f"{ip:.1f} %")
     with m2: st.metric("Velocidad de Avance Frontal", f"{velocidad_fuego:.2f} km/h")
-    with m3: st.metric("Población Civil en Riesgo", f"{poblacion_afectada:,.0f} hab")
-    with m4: st.metric("Estimación de Viviendas en Riesgo", f"{vividendas_afectadas:,.0f} casas")
+    with m3: st.metric("Población de Comuna Focal", f"{poblacion_foco:,.0f} hab")
+    with m4: st.metric("Viviendas Aprox. Comuna Focal", f"{viviendas_foco:,.0f} casas")
+
+    st.caption(
+        "Nota: la población y viviendas superiores corresponden a la comuna seleccionada como foco inicial. "
+        "La tabla inferior mantiene la simulación de comunas potencialmente afectadas."
+    )
 
     st.markdown("---")
     col_mapa, col_graficos = st.columns([2, 1])
