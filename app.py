@@ -7,7 +7,7 @@ import os
 from utm_grid import generar_trazas_cuadricula_utm
 
 # ==============================================================================
-# 1. CONFIGURACIÓN DE LA INTERFAZ
+# 1. CONFIGURACIÓN DE LA INTERFAZ-- Modified
 # ==============================================================================
 st.set_page_config(
     page_title="Sistema de Gestión de Crisis - Biobío",
