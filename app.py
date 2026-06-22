@@ -113,15 +113,103 @@ def inicializar_sistema():
             "bosques_total_ha": limpiar_numero_chileno(b_tot)
         }
 
-    df_c['Región_Clean'] = df_c['region'].astype(str).str.lower()
-    df_comunas_biobio = df_c[df_c['Región_Clean'].str.contains('bio', na=False)].copy()
-    
-    df_comunas_biobio['comuna'] = df_comunas_biobio['comuna'].str.strip()
-    df_comunas_biobio['latitud_decimal'] = pd.to_numeric(df_comunas_biobio['latitud_decimal'], errors='coerce')
-    df_comunas_biobio['longitud_decimal'] = pd.to_numeric(df_comunas_biobio['longitud_decimal'], errors='coerce')
-    df_comunas_biobio['poblacion_2017'] = df_comunas_biobio['poblacion_2017'].astype(str).str.replace(',', '').str.replace('.', '').astype(int)
-    df_comunas_biobio = df_comunas_biobio.dropna(subset=['latitud_decimal', 'longitud_decimal'])
-   
+    # --------------------------------------------------------------------------
+    # Normalización robusta de columnas comunales
+    # --------------------------------------------------------------------------
+    # Evita errores por columnas tipo Región / region / Latitud (Decimal), etc.
+    mapa_columnas = {
+        "Comuna": "comuna",
+        "Provincia": "provincia",
+        "Región": "region",
+        "Region": "region",
+        "Población Año 2017": "poblacion_2017",
+        "Poblacion Año 2017": "poblacion_2017",
+        "Población 2017": "poblacion_2017",
+        "Poblacion 2017": "poblacion_2017",
+        "Latitud (Decimal)": "latitud_decimal",
+        "Latitud Decimal": "latitud_decimal",
+        "Longitud (decimal)": "longitud_decimal",
+        "Longitud (Decimal)": "longitud_decimal",
+        "Longitud Decimal": "longitud_decimal",
+    }
+
+    df_c = df_c.rename(columns=mapa_columnas)
+    df_c.columns = (
+        df_c.columns
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .str.replace("á", "a", regex=False)
+        .str.replace("é", "e", regex=False)
+        .str.replace("í", "i", regex=False)
+        .str.replace("ó", "o", regex=False)
+        .str.replace("ú", "u", regex=False)
+    )
+
+    columnas_necesarias = ["comuna", "region", "poblacion_2017", "latitud_decimal", "longitud_decimal"]
+    faltantes = [c for c in columnas_necesarias if c not in df_c.columns]
+
+    if faltantes:
+        st.error("Faltan columnas necesarias en el archivo de comunas.")
+        st.write("Columnas faltantes:", faltantes)
+        st.write("Columnas detectadas:", df_c.columns.tolist())
+        st.stop()
+
+    df_c["region_clean"] = df_c["region"].astype(str).str.lower()
+    df_comunas_biobio = df_c[df_c["region_clean"].str.contains("bio", na=False)].copy()
+
+    df_comunas_biobio["comuna"] = df_comunas_biobio["comuna"].astype(str).str.strip()
+    df_comunas_biobio["latitud_decimal"] = pd.to_numeric(df_comunas_biobio["latitud_decimal"], errors="coerce")
+    df_comunas_biobio["longitud_decimal"] = pd.to_numeric(df_comunas_biobio["longitud_decimal"], errors="coerce")
+
+    def limpiar_poblacion(valor):
+        """Convierte población chilena a entero sin inflar cifras.
+
+        Ejemplos:
+        - '223.574' -> 223574
+        - '202331' -> 202331
+        - '91,773' -> 91773
+        - 223574 -> 223574
+        """
+        if pd.isna(valor):
+            return 0
+
+        texto = str(valor).strip().replace(" ", "")
+
+        # Formato chileno/español: 1.234,0
+        if "." in texto and "," in texto:
+            texto = texto.replace(".", "").replace(",", ".")
+
+        # Punto como separador de miles: 223.574
+        elif "." in texto:
+            partes = texto.split(".")
+            if len(partes[-1]) == 3:
+                texto = texto.replace(".", "")
+            else:
+                texto = texto.replace(".", "")
+
+        # Coma como separador de miles: 223,574
+        elif "," in texto:
+            partes = texto.split(",")
+            if len(partes[-1]) == 3:
+                texto = texto.replace(",", "")
+            else:
+                texto = texto.replace(",", ".")
+
+        try:
+            numero = int(round(float(texto)))
+        except Exception:
+            return 0
+
+        # Control de seguridad: una comuna no debería quedar con millones por error de limpieza.
+        while numero > 1_000_000:
+            numero = int(numero / 1000)
+
+        return numero
+
+    df_comunas_biobio["poblacion_2017"] = df_comunas_biobio["poblacion_2017"].apply(limpiar_poblacion)
+    df_comunas_biobio = df_comunas_biobio.dropna(subset=["latitud_decimal", "longitud_decimal"])
+
     return df_comunas_biobio, vegetacion
 
 df_comunas, datos_biobio = inicializar_sistema()
