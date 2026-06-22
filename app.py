@@ -7,7 +7,7 @@ import os
 from utm_grid import generar_trazas_cuadricula_utm
 
 # ==============================================================================
-# 1. CONFIGURACIÓN DE LA INTERFAZ-- Modified
+# 1. CONFIGURACIÓN DE LA INTERFAZ mod mod
 # ==============================================================================
 st.set_page_config(
     page_title="Sistema de Gestión de Crisis - Biobío",
@@ -210,9 +210,23 @@ def inicializar_sistema():
     df_comunas_biobio["poblacion_2017"] = df_comunas_biobio["poblacion_2017"].apply(limpiar_poblacion)
     df_comunas_biobio = df_comunas_biobio.dropna(subset=["latitud_decimal", "longitud_decimal"])
 
+    # Evita duplicados que inflan población, puntos del mapa y sumas de riesgo.
+    df_comunas_biobio = df_comunas_biobio.drop_duplicates(subset=["comuna"], keep="first")
+
     return df_comunas_biobio, vegetacion
 
 df_comunas, datos_biobio = inicializar_sistema()
+
+# Control rápido de calidad de datos poblacionales
+with st.sidebar.expander("🔎 Control de datos", expanded=False):
+    st.write("Comunas cargadas:", len(df_comunas))
+    st.write("Población total cargada:", f"{df_comunas['poblacion_2017'].sum():,.0f}")
+    st.dataframe(
+        df_comunas[['comuna', 'poblacion_2017']]
+        .sort_values('poblacion_2017', ascending=False),
+        hide_index=True,
+        use_container_width=True
+    )
 
 # ==============================================================================
 # 3. PANEL LATERAL: CONTROLES DE CRISIS
@@ -356,7 +370,11 @@ tab_mapa, tab_tabla, tab_datos, tab_contexto, tab_prevencion = st.tabs([
 # PESTAÑA 1: MAPA Y CONTROLES OPERATIVOS (RESTAURACIÓN DEL SCROLL ZOOM)
 # ------------------------------------------------------------------------------
 with tab_mapa:
-    comunas_afectadas = df_comunas[df_comunas['Probabilidad (%)'] >= 25]
+    comunas_afectadas = (
+        df_comunas[df_comunas['Probabilidad (%)'] >= 25]
+        .drop_duplicates(subset=['comuna'])
+        .copy()
+    )
     poblacion_afectada = comunas_afectadas['poblacion_2017'].sum()
     vividendas_afectadas = poblacion_afectada / 3.2
 
